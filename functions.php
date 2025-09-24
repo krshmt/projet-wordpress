@@ -696,7 +696,9 @@ function structure_form_shortcode() {
     }
 
     if ($has_structure) {
-        echo '<a href="#" class="js-ehp-edit-structure button" style="margin-bottom:12px;">Modifier les informations de ma structure</a>';
+        echo '<div id="ehp-structure-toggle-bar">';
+        echo '<a href="#" class="button js-ehp-edit-structure js-ehp-toggle-structure" data-label-open="Modifier les informations de ma structure" data-label-close="Masquer le formulaire de ma structure" style="margin-bottom:12px;">Modifier les informations de ma structure</a>';
+        echo '</div>';
     }
 
     echo '<div id="ehp-structure-form-wrapper">';
@@ -1192,6 +1194,11 @@ add_filter('body_class', function($classes){
     ]);
 
     if (!empty($has_structure)) $classes[] = 'ehp-has-structure';
+
+    if (isset($_GET['create_formation']) && $_GET['create_formation'] !== '') {
+        $classes[] = 'ehp-creating-formation';
+    }
+
     return $classes;
 });
 
@@ -1209,7 +1216,9 @@ add_action('wp_enqueue_scripts', function () {
     wp_enqueue_style('ehp-structure-toggle');
     wp_add_inline_style('ehp-structure-toggle', "
       /* Si l'utilisateur a déjà une structure, on cache le form par défaut */
-      body.ehp-has-structure:not(.ehp-show-structure-form) #ehp-structure-form-wrapper { display: none !important; }
+      body.ehp-has-structure:not(.ehp-show-structure-form):not(.ehp-creating-formation) #ehp-structure-form-wrapper { display: none !important; }
+      #ehp-structure-toggle-bar { display:block; margin:0 0 12px 0; }
+      body.ehp-has-structure:not(.ehp-show-structure-form):not(.ehp-creating-formation) #ehp-structure-toggle-bar { display:block; }
 
       /* Petit confort visuel si tu veux ajouter des transitions plus tard */
       #ehp-structure-form-wrapper { transition: opacity .2s ease; }
@@ -1224,6 +1233,18 @@ add_action('wp_enqueue_scripts', function () {
         var body  = document.body;
         var wrap  = document.getElementById('ehp-structure-form-wrapper');
 
+        function syncToggleLabels(){
+          document.querySelectorAll('.js-ehp-toggle-structure').forEach(function(btn){
+            var openLabel = btn.getAttribute('data-label-open') || btn.textContent;
+            var closeLabel = btn.getAttribute('data-label-close') || openLabel;
+            if (body.classList.contains('ehp-show-structure-form')) {
+              btn.textContent = closeLabel;
+            } else {
+              btn.textContent = openLabel;
+            }
+          });
+        }
+
         function showForm(){
           body.classList.add('ehp-show-structure-form');
           if (wrap) {
@@ -1231,32 +1252,48 @@ add_action('wp_enqueue_scripts', function () {
             var first = wrap.querySelector('input, textarea, select');
             if (first) { try { first.focus(); } catch(e){} }
           }
+          syncToggleLabels();
         }
         function hideForm(){
           body.classList.remove('ehp-show-structure-form');
+          syncToggleLabels();
         }
 
-        // Bouton(s) “Modifier les informations de la structure”
+        document.querySelectorAll('.js-ehp-toggle-structure').forEach(function(btn){
+          btn.addEventListener('click', function(e){
+            e.preventDefault();
+            if (body.classList.contains('ehp-show-structure-form')) {
+              hideForm();
+            } else {
+              showForm();
+            }
+          });
+        });
+
         document.querySelectorAll('.js-ehp-edit-structure').forEach(function(btn){
+          if (btn.classList.contains('js-ehp-toggle-structure')) return;
           btn.addEventListener('click', function(e){ e.preventDefault(); showForm(); });
         });
 
-        // Lien “Fermer le formulaire” inséré en haut du form (optionnel)
         if (wrap) {
-          var close = document.createElement('a');
-          close.href = '#';
-          close.className = 'ehp-inline-btn';
-          close.textContent = 'Fermer le formulaire';
-          close.addEventListener('click', function(e){ e.preventDefault(); hideForm(); });
-          wrap.insertBefore(close, wrap.firstChild);
+          var structureForm = wrap.querySelector('form');
+          if (structureForm) {
+            structureForm.addEventListener('submit', function(){
+              hideForm();
+            });
+          }
         }
 
-        // Après soumission ACF (retour ?updated=1), on recache le formulaire
         var params = new URLSearchParams(location.search);
         if (params.has('updated')) hideForm();
 
-        // Si tu veux forcer l'ouverture via URL (ex: ?edit_structure=1)
+        if (params.has('create_formation')) {
+          body.classList.add('ehp-creating-formation');
+        }
+
         if (params.has('edit_structure')) showForm();
+
+        syncToggleLabels();
       })();
     ");
 });
