@@ -272,6 +272,24 @@ require HELLO_THEME_PATH . '/theme.php';
 
 HelloTheme\Theme::instance();
 
+/**
+ * Hide auto-generated coordinate fields from non-admin users.
+ */
+function ehp_hide_generated_coordinates( $field ) {
+    $targets = [ 'latitude', 'longitude' ];
+    $field_name = isset( $field['name'] ) ? $field['name'] : '';
+    $original_name = isset( $field['_name'] ) ? $field['_name'] : '';
+
+    if ( in_array( $field_name, $targets, true ) || in_array( $original_name, $targets, true ) ) {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            return false;
+        }
+    }
+
+    return $field;
+}
+add_filter( 'acf/prepare_field', 'ehp_hide_generated_coordinates', 20 );
+
 add_action('acf/save_post', 'generer_lat_lon', 20);
 function generer_lat_lon($post_id) {
     // Évite les pages d’options ou révisions
@@ -351,10 +369,26 @@ function user_structures_list_shortcode() {
     ?>
     <style>
         .structures-accordion details {
+            position: relative;
             border: 1px solid #ddd;
             border-radius: 4px;
             margin-bottom: 8px;
             padding: 6px;
+            overflow: hidden;
+        }
+        .structures-accordion details::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 5px;
+            height: 100%;
+            background: #19193f;
+            opacity: 0;
+            transition: opacity .2s ease;
+        }
+        .structures-accordion details:not([open])::before {
+            opacity: 1;
         }
         .structures-accordion summary {
             cursor: pointer;
@@ -365,13 +399,33 @@ function user_structures_list_shortcode() {
             display: none;
         }
         .structures-accordion summary::before {
-            content: "▶";
+            content: "";
             display: inline-block;
             margin-right: 6px;
             transition: transform .2s;
         }
         details[open]>summary::before {
             transform: rotate(90deg);
+        }
+        .structures-accordion .structure-actions {
+            margin-top: 8px;
+            text-align: center;
+        }
+        .structures-accordion .create-formation-btn {
+            display: inline-block;
+            padding: 10px 18px;
+            margin-top: 12px;
+            background: #A8D7D2;
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 4px;
+        }
+        .structures-accordion .create-formation-btn:hover {
+            background: #97cac4;
+        }
+        .structures-accordion .create-formation-btn.disabled {
+            opacity: 0.6;
+            pointer-events: none;
         }
         .formation-item {
             border: 1px solid #ddd;
@@ -423,13 +477,15 @@ function user_structures_list_shortcode() {
                 <summary><?php echo $structure_title; ?></summary>
 
                 <?php
+                echo '<div class="structure-actions">';
                 if ( $formation_url ) {
-                    echo '<a href="' . esc_url( $formation_url ) . '" class="button" style="margin-top:8px;">Créer une formation pour cette structure</a>';
+                    echo '<a href="' . esc_url( $formation_url ) . '" class="button create-formation-btn">Créer une formation pour cette structure</a>';
                 } else {
-                    echo '<span class="button disabled" style="margin-top:8px;opacity:.6;pointer-events:none;">Créer une formation (page cible introuvable)</span>';
+                    echo '<span class="button create-formation-btn disabled" aria-disabled="true">Créer une formation (page cible introuvable)</span>';
                 }
+                echo '</div>';
                 ?>
-                <a href="<?php echo esc_url( $edit_structure_url ); ?>" class="button button-secondary" style="margin-top: 8px; margin-left: 10px;">Modifier cette structure</a>
+                <a href="<?php echo esc_url( $edit_structure_url ); ?>" class="button button-secondary structure-edit-link" style="margin-top: 8px; margin-left: 10px;">Modifier cette structure</a>
 
                 <div class="liste-formations" style="margin-top: 20px;">
                     <?php afficher_formations_structure_triees( $structure_id ); ?>
@@ -556,6 +612,9 @@ function structure_form_shortcode() {
                 if (is_array($fields)) {
                     foreach ($fields as $f) {
                         // On ne prend que les champs racine (les sous-champs repeater ont aussi une key, ça fonctionne quand même)
+                        if (!empty($f['name']) && in_array($f['name'], ['latitude', 'longitude'], true)) {
+                            continue;
+                        }
                         if (!empty($f['key'])) {
                             $formation_field_keys[] = $f['key'];
                         }
@@ -1026,7 +1085,7 @@ function afficher_formations_structure_triees($structure_id) {
 
     // Afficher les formations à venir
     if (!empty($formations_futures)) {
-        echo '<h4>📅 Formations à venir (' . count($formations_futures) . ')</h4>';
+        echo '<h4>Formations à venir (' . count($formations_futures) . ')</h4>';
         echo '<div class="formations-futures">';
         foreach ($formations_futures as $formation) {
             afficher_bloc_formation_simple($formation, false);
@@ -1036,7 +1095,7 @@ function afficher_formations_structure_triees($structure_id) {
 
     // Afficher les formations passées
     if (!empty($formations_passees)) {
-        echo '<h4>📋 Formations passées (' . count($formations_passees) . ')</h4>';
+        echo '<h4>Formations passées (' . count($formations_passees) . ')</h4>';
         echo '<div class="formations-passees">';
         foreach ($formations_passees as $formation) {
             afficher_bloc_formation_simple($formation, true);
@@ -1101,10 +1160,26 @@ function gestion_structure_et_formation_shortcode() {
     ?>
     <style>
         .structures-accordion details {
+            position: relative;
             border: 1px solid #ddd;
             border-radius: 4px;
             margin-bottom: 8px;
             padding: 6px;
+            overflow: hidden;
+        }
+        .structures-accordion details::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 5px;
+            height: 100%;
+            background: #19193f;
+            opacity: 0;
+            transition: opacity .2s ease;
+        }
+        .structures-accordion details:not([open])::before {
+            opacity: 1;
         }
         .structures-accordion summary {
             cursor: pointer;
@@ -1113,12 +1188,32 @@ function gestion_structure_et_formation_shortcode() {
         }
         .structures-accordion summary::-webkit-details-marker { display: none; }
         .structures-accordion summary::before {
-            content: "▶";
+            content: "";
             display: inline-block;
             margin-right: 6px;
             transition: transform .2s;
         }
         details[open]>summary::before { transform: rotate(90deg); }
+        .structures-accordion .structure-actions {
+            margin-top: 8px;
+            text-align: center;
+        }
+        .structures-accordion .create-formation-btn {
+            display: inline-block;
+            padding: 10px 18px;
+            margin-top: 12px;
+            background: #A8D7D2;
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 4px;
+        }
+        .structures-accordion .create-formation-btn:hover {
+            background: #97cac4;
+        }
+        .structures-accordion .create-formation-btn.disabled {
+            opacity: 0.6;
+            pointer-events: none;
+        }
         .formation-item {
             border: 1px solid #ddd;
             padding: 15px;
@@ -1153,7 +1248,9 @@ function gestion_structure_et_formation_shortcode() {
         echo '<details' . ( $is_open ? ' open' : '' ) . '>';
             echo '<summary>' . esc_html( $structure->post_title ) . '</summary>';
 
-            echo '<a href="' . esc_url( $create_on_sf_url ) . '" class="button" style="margin-top:8px;">Créer une formation pour cette structure</a>';
+            echo '<div class="structure-actions">';
+            echo '<a href="' . esc_url( $create_on_sf_url ) . '" class="button create-formation-btn">Créer une formation pour cette structure</a>';
+            echo '</div>';
 
             echo '<div class="formations-section">';
                 afficher_formations_structure_triees( $structure->ID );
@@ -1393,13 +1490,13 @@ function afficher_bloc_formation_simple($formation, $is_passee = false) {
     echo '<h5>' . esc_html($formation->post_title) . '</h5>';
 
     if ($date_formation && strtotime($date_formation)) {
-        echo '<p><strong>📅 Date :</strong> ' . date('d/m/Y', strtotime($date_formation)) . '</p>';
+        echo '<p><strong>Date :</strong> ' . date('d/m/Y', strtotime($date_formation)) . '</p>';
     } else {
-        echo '<p><strong>📅 Date :</strong> Non définie</p>';
+        echo '<p><strong>Date :</strong> Non définie</p>';
     }
 
     if ($lieu_formation) {
-        echo '<p><strong>📍 Lieu :</strong> ' . esc_html($lieu_formation) . '</p>';
+        echo '<p><strong>Lieu :</strong> ' . esc_html($lieu_formation) . '</p>';
     }
 
     if ($formation->post_content) {
@@ -1435,7 +1532,7 @@ function afficher_bloc_formation_simple($formation, $is_passee = false) {
  ******************************************************************/
 function debug_dates_formations() {
     echo '<div style="background: #f0f0f0; padding: 10px; margin: 10px 0; border-left: 4px solid #007cba;">';
-    echo '<h4>🔍 Debug des dates de formations</h4>';
+    echo '<h4>Debug des dates de formations</h4>';
     
     $timezone = wp_timezone_string();
     $date_actuelle = (new DateTime('now', new DateTimeZone($timezone)))->format('Y-m-d');
