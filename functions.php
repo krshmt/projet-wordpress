@@ -273,6 +273,58 @@ require HELLO_THEME_PATH . '/theme.php';
 HelloTheme\Theme::instance();
 
 /**
+ * Retrieve the formation title from various field locations.
+ */
+function ehp_get_formation_title( $post_id ) {
+    $title = get_field( 'nom_de_la_formation', $post_id, false );
+    if ( is_string( $title ) && trim( $title ) !== '' ) {
+        return trim( $title );
+    }
+
+    $group = get_field( 'informations_sur_la_formation', $post_id );
+    if ( is_array( $group ) && ! empty( $group['nom_de_la_formation'] ) ) {
+        return trim( (string) $group['nom_de_la_formation'] );
+    }
+
+    if ( function_exists( 'get_fields' ) ) {
+        $all_fields = get_fields( $post_id );
+        if ( is_array( $all_fields ) ) {
+            if ( isset( $all_fields['informations_sur_la_formation']['nom_de_la_formation'] ) ) {
+                $candidate = $all_fields['informations_sur_la_formation']['nom_de_la_formation'];
+                if ( is_string( $candidate ) && trim( $candidate ) !== '' ) {
+                    return trim( $candidate );
+                }
+            }
+            foreach ( $all_fields as $key => $value ) {
+                if ( is_array( $value ) && isset( $value['nom_de_la_formation'] ) && is_string( $value['nom_de_la_formation'] ) ) {
+                    $candidate = trim( $value['nom_de_la_formation'] );
+                    if ( $candidate !== '' ) {
+                        return $candidate;
+                    }
+                }
+            }
+        }
+    }
+
+    $meta = get_post_meta( $post_id );
+    foreach ( $meta as $meta_key => $values ) {
+        if ( false === strpos( $meta_key, 'nom_de_la_formation' ) ) {
+            continue;
+        }
+
+        $candidate = is_array( $values ) ? reset( $values ) : $values;
+        if ( is_string( $candidate ) ) {
+            $candidate = trim( $candidate );
+            if ( $candidate !== '' ) {
+                return $candidate;
+            }
+        }
+    }
+
+    return '';
+}
+
+/**
  * Hide auto-generated coordinate fields from non-admin users.
  */
 function ehp_hide_generated_coordinates( $field ) {
@@ -317,8 +369,8 @@ function generer_lat_lon($post_id) {
 
     $data = json_decode(wp_remote_retrieve_body($response), true);
     if (!empty($data[0])) {
-        update_field('latitude', $data[0]['lat'], $post_id);
-        update_field('longitude', $data[0]['lon'], $post_id);
+        update_post_meta($post_id, 'latitude', $data[0]['lat']);
+        update_post_meta($post_id, 'longitude', $data[0]['lon']);
     }
 }
 
@@ -384,11 +436,6 @@ function user_structures_list_shortcode() {
             width: 5px;
             height: 100%;
             background: #19193f;
-            opacity: 0;
-            transition: opacity .2s ease;
-        }
-        .structures-accordion details:not([open])::before {
-            opacity: 1;
         }
         .structures-accordion summary {
             cursor: pointer;
@@ -1175,11 +1222,6 @@ function gestion_structure_et_formation_shortcode() {
             width: 5px;
             height: 100%;
             background: #19193f;
-            opacity: 0;
-            transition: opacity .2s ease;
-        }
-        .structures-accordion details:not([open])::before {
-            opacity: 1;
         }
         .structures-accordion summary {
             cursor: pointer;
@@ -1414,8 +1456,8 @@ function mettre_a_jour_titre_automatique($post_id) {
 
     // FORMATIONS
     if (get_post_type($post_id) === 'formations') {
-        $intitule = get_field('intitule', $post_id);
-        if ($intitule) {
+        $intitule = ehp_get_formation_title($post_id);
+        if ($intitule !== '') {
             wp_update_post(array(
                 'ID' => $post_id,
                 'post_title' => wp_strip_all_tags($intitule)
@@ -1487,7 +1529,14 @@ function afficher_bloc_formation_simple($formation, $is_passee = false) {
     $class = $is_passee ? 'formation-item passee' : 'formation-item';
 
     echo '<div class="' . esc_attr($class) . '">';
-    echo '<h5>' . esc_html($formation->post_title) . '</h5>';
+    $titre = trim($formation->post_title);
+    if ($titre === '') {
+        $titre = ehp_get_formation_title($formation->ID);
+        if ($titre === '') {
+            $titre = 'Formation';
+        }
+    }
+    echo '<h5>' . esc_html($titre) . '</h5>';
 
     if ($date_formation && strtotime($date_formation)) {
         echo '<p><strong>Date :</strong> ' . date('d/m/Y', strtotime($date_formation)) . '</p>';
